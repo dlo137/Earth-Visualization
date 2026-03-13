@@ -1,9 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import '@mediapipe/hands';
-declare const Hands: any;
-type Results = any;
-import '@mediapipe/camera_utils';
-declare const Camera: any;
+import { HandLandmarker, FilesetResolver } from '@mediapipe/tasks-vision';
 import type { HandTrackingState, Landmark, FingertipState } from '../types/handTracking';
 import { FINGERTIP_INDICES } from '../constants/config';
 
@@ -17,29 +13,33 @@ const DEFAULT_STATE: HandTrackingState = {
 };
 
 /**
- * React hook to track the user's right hand using MediaPipe Hands and return fingertip landmarks.
+ * React hook to track hands using MediaPipe Tasks Vision (HandLandmarker).
+ * Replaces the deprecated @mediapipe/hands which is incompatible with modern Chrome.
  */
 export function useHandTracking(
   videoRef: React.RefObject<HTMLVideoElement>
 ): HandTrackingState {
   const [state, setState] = useState<HandTrackingState>(DEFAULT_STATE);
-  const handsRef = useRef<any>(null);
-  const cameraRef = useRef<any>(null);
+  const landmarkerRef = useRef<HandLandmarker | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const lastVideoTimeRef = useRef<number>(-1);
 
-  const onResults = useCallback((results: Results) => {
-    // No hands detected
-    if (!results.multiHandLandmarks || !results.multiHandedness) {
-      setState(DEFAULT_STATE);
+  const processFrame = useCallback(() => {
+    const video = videoRef.current;
+    const landmarker = landmarkerRef.current;
+    if (!video || !landmarker || video.readyState < 2) {
+      rafRef.current = requestAnimationFrame(processFrame);
       return;
     }
-    // Find the user's right hand (labeled 'Left' due to selfieMode)
-    let found = false;
-    for (let i = 0; i < results.multiHandedness.length; i++) {
-      const handedness = results.multiHandedness[i];
-      if (handedness.label === 'Left') {
-        const landmarks = results.multiHandLandmarks[i] as Landmark[];
-        if (!landmarks || landmarks.length !== 21) continue;
-        // Extract fingertips
+
+    if (video.currentTime !== lastVideoTimeRef.current) {
+      lastVideoTimeRef.current = video.currentTime;
+      const results = landmarker.detectForVideo(video, performance.now());
+
+      if (results.landmarks && results.landmarks.length > 0) {
+        const landmarks = results.landmarks[0] as Landmark[];
+        const topCategory = results.handedness[0]?.[0];
+
         const fingertips: FingertipState = {
           thumb: landmarks[FINGERTIP_INDICES.thumb] ?? null,
           index: landmarks[FINGERTIP_INDICES.index] ?? null,
@@ -49,64 +49,79 @@ export function useHandTracking(
         };
         setState({
           isDetected: true,
-          handedness: 'Right',
+          handedness: (topCategory?.categoryName as 'Left' | 'Right') ?? null,
           fingertips,
           rawLandmarks: landmarks,
-          confidence: handedness.score ?? 1,
-          timestamp: typeof performance !== 'undefined' ? performance.now() : Date.now(),
+          confidence: topCategory?.score ?? 1,
+          timestamp: performance.now(),
         });
-        found = true;
-        break;
+      } else {
+        setState(DEFAULT_STATE);
       }
     }
-    if (!found) {
-      setState(DEFAULT_STATE);
-    }
-  }, []);
+
+    rafRef.current = requestAnimationFrame(processFrame);
+  }, [videoRef]);
 
   useEffect(() => {
-    if (!videoRef.current) return;
+    let cancelled = false;
 
-    const hands = new Hands({
-      locateFile: (file: string) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
-    });
-    hands.setOptions({
-      modelComplexity: 1,
-      maxNumHands: 1,
-      minDetectionConfidence: 0.75,
-      minTrackingConfidence: 0.75,
-      selfieMode: true,
-    });
-    hands.onResults(onResults);
-    handsRef.current = hands;
-
-    let camera: any = null;
-    if (videoRef.current) {
-      camera = new Camera(videoRef.current, {
-        onFrame: async () => {
-          if (videoRef.current && handsRef.current) {
-            await handsRef.current.send({ image: videoRef.current });
-          }
+    async function init() {
+      const vision = await FilesetResolver.forVisionTasks('/mediapipe-wasm');
+      const landmarker = await HandLandmarker.createFromOptions(vision, {
+        baseOptions: {
+          modelAssetPath:
+            'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
+          delegate: 'GPU',
         },
-        width: 640,
-        height: 480,
+        runningMode: 'VIDEO',
+        numHands: 2,
+        minHandDetectionConfidence: 0.5,
+        minHandPresenceConfidence: 0.5,
+        minTrackingConfidence: 0.5,
       });
-      cameraRef.current = camera;
-      camera.start();
+
+      if (cancelled) {
+        landmarker.close();
+        return;
+      }
+
+      landmarkerRef.current = landmarker;
+
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      if (cancelled) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
+
+      const video = videoRef.current;
+      if (video) {
+        video.srcObject = stream;
+        await video.play();
+        rafRef.current = requestAnimationFrame(processFrame);
+      }
     }
 
+    init().catch(console.error);
+
     return () => {
-      if (cameraRef.current) {
-        cameraRef.current.stop();
-        cameraRef.current = null;
+      cancelled = true;
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
       }
-      if (handsRef.current) {
-        handsRef.current.close();
-        handsRef.current = null;
+      if (landmarkerRef.current) {
+        landmarkerRef.current.close();
+        landmarkerRef.current = null;
       }
+      const video = videoRef.current;
+      if (video?.srcObject) {
+        (video.srcObject as MediaStream).getTracks().forEach((t) => t.stop());
+        video.srcObject = null;
+      }
+      setState(DEFAULT_STATE);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [videoRef]);
+  }, [videoRef, processFrame]);
 
   return state;
 }
