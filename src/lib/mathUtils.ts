@@ -1,3 +1,5 @@
+import type { Landmark } from '../types/handTracking';
+
 /**
  * Converts MediaPipe normalized coordinates (0–1) to Three.js NDC (-1 to 1), flipping Y and optionally mirroring X.
  */
@@ -34,8 +36,6 @@ export function lerpV3(
 export function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
-
-import type { Landmark } from '../types/handTracking';
 
 /**
  * Returns the frame-over-frame delta between two Landmarks, accounting for mirrorX on dx.

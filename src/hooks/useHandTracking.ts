@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { Hands, Results } from '@mediapipe/hands';
-import { Camera } from '@mediapipe/camera_utils';
+import '@mediapipe/hands';
+declare const Hands: any;
+type Results = any;
+import '@mediapipe/camera_utils';
+declare const Camera: any;
 import type { HandTrackingState, Landmark, FingertipState } from '../types/handTracking';
 import { FINGERTIP_INDICES } from '../constants/config';
 
@@ -20,8 +23,8 @@ export function useHandTracking(
   videoRef: React.RefObject<HTMLVideoElement>
 ): HandTrackingState {
   const [state, setState] = useState<HandTrackingState>(DEFAULT_STATE);
-  const handsRef = useRef<Hands | null>(null);
-  const cameraRef = useRef<Camera | null>(null);
+  const handsRef = useRef<any>(null);
+  const cameraRef = useRef<any>(null);
 
   const onResults = useCallback((results: Results) => {
     // No hands detected
@@ -77,7 +80,7 @@ export function useHandTracking(
     hands.onResults(onResults);
     handsRef.current = hands;
 
-    let camera: Camera | null = null;
+    let camera: any = null;
     if (videoRef.current) {
       camera = new Camera(videoRef.current, {
         onFrame: async () => {
