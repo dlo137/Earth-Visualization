@@ -1,9 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import '@mediapipe/hands';
-declare const Hands: any;
-type Results = any;
-import '@mediapipe/camera_utils';
-declare const Camera: any;
+import { HandLandmarker, FilesetResolver } from '@mediapipe/tasks-vision';
 import type { HandTrackingState, Landmark, FingertipState } from '../types/handTracking';
 import { FINGERTIP_INDICES } from '../constants/config';
 
@@ -17,89 +13,118 @@ export const DEFAULT_HAND_STATE: HandTrackingState = {
 };
 
 /**
- * React hook to track up to 2 hands using MediaPipe Hands and return fingertip landmarks.
+ * React hook to track up to 2 hands using MediaPipe Tasks Vision (HandLandmarker).
+ * Replaces the deprecated @mediapipe/hands which is incompatible with modern Chrome.
  */
 export function useHandTracking(
   videoRef: React.RefObject<HTMLVideoElement>
 ): HandTrackingState[] {
   const [hands, setHands] = useState<HandTrackingState[]>([]);
-  const handsRef = useRef<any>(null);
-  const cameraRef = useRef<any>(null);
+  const landmarkerRef = useRef<HandLandmarker | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const lastVideoTimeRef = useRef<number>(-1);
 
-  const onResults = useCallback((results: Results) => {
-    if (!results.multiHandLandmarks || !results.multiHandedness || results.multiHandedness.length === 0) {
-      setHands([]);
+  const processFrame = useCallback(() => {
+    const video = videoRef.current;
+    const landmarker = landmarkerRef.current;
+    if (!video || !landmarker || video.readyState < 2) {
+      rafRef.current = requestAnimationFrame(processFrame);
       return;
     }
-    const detected: HandTrackingState[] = [];
-    for (let i = 0; i < results.multiHandedness.length; i++) {
-      const handedness = results.multiHandedness[i];
-      const landmarks = results.multiHandLandmarks[i] as Landmark[];
-      if (!landmarks || landmarks.length !== 21) continue;
-      // In selfieMode, MediaPipe flips labels: 'Left' = user's right, 'Right' = user's left
-      const resolvedHandedness: 'Left' | 'Right' = handedness.label === 'Left' ? 'Right' : 'Left';
-      const fingertips: FingertipState = {
-        thumb: landmarks[FINGERTIP_INDICES.thumb] ?? null,
-        index: landmarks[FINGERTIP_INDICES.index] ?? null,
-        middle: landmarks[FINGERTIP_INDICES.middle] ?? null,
-        ring: landmarks[FINGERTIP_INDICES.ring] ?? null,
-        pinky: landmarks[FINGERTIP_INDICES.pinky] ?? null,
-      };
-      detected.push({
-        isDetected: true,
-        handedness: resolvedHandedness,
-        fingertips,
-        rawLandmarks: landmarks,
-        confidence: handedness.score ?? 1,
-        timestamp: typeof performance !== 'undefined' ? performance.now() : Date.now(),
-      });
+
+    if (video.currentTime !== lastVideoTimeRef.current) {
+      lastVideoTimeRef.current = video.currentTime;
+      const results = landmarker.detectForVideo(video, performance.now());
+
+      if (results.landmarks && results.landmarks.length > 0) {
+        const detected: HandTrackingState[] = [];
+        for (let i = 0; i < results.landmarks.length; i++) {
+          const landmarks = results.landmarks[i] as Landmark[];
+          const topCategory = results.handedness[i]?.[0];
+          const fingertips: FingertipState = {
+            thumb: landmarks[FINGERTIP_INDICES.thumb] ?? null,
+            index: landmarks[FINGERTIP_INDICES.index] ?? null,
+            middle: landmarks[FINGERTIP_INDICES.middle] ?? null,
+            ring: landmarks[FINGERTIP_INDICES.ring] ?? null,
+            pinky: landmarks[FINGERTIP_INDICES.pinky] ?? null,
+          };
+          detected.push({
+            isDetected: true,
+            handedness: (topCategory?.categoryName as 'Left' | 'Right') ?? null,
+            fingertips,
+            rawLandmarks: landmarks,
+            confidence: topCategory?.score ?? 1,
+            timestamp: performance.now(),
+          });
+        }
+        setHands(detected);
+      } else {
+        setHands([]);
+      }
     }
-    setHands(detected);
-  }, []);
+
+    rafRef.current = requestAnimationFrame(processFrame);
+  }, [videoRef]);
 
   useEffect(() => {
-    if (!videoRef.current) return;
+    let cancelled = false;
 
-    const hands = new Hands({
-      locateFile: (file: string) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
-    });
-    hands.setOptions({
-      modelComplexity: 1,
-      maxNumHands: 2,
-      minDetectionConfidence: 0.5,
-      minTrackingConfidence: 0.5,
-      selfieMode: true,
-    });
-    hands.onResults(onResults);
-    handsRef.current = hands;
-
-    let camera: any = null;
-    if (videoRef.current) {
-      camera = new Camera(videoRef.current, {
-        onFrame: async () => {
-          if (videoRef.current && handsRef.current) {
-            await handsRef.current.send({ image: videoRef.current });
-          }
+    async function init() {
+      const vision = await FilesetResolver.forVisionTasks('/mediapipe-wasm');
+      const landmarker = await HandLandmarker.createFromOptions(vision, {
+        baseOptions: {
+          modelAssetPath:
+            'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
+          delegate: 'GPU',
         },
-        width: 640,
-        height: 480,
+        runningMode: 'VIDEO',
+        numHands: 2,
+        minHandDetectionConfidence: 0.5,
+        minHandPresenceConfidence: 0.5,
+        minTrackingConfidence: 0.5,
       });
-      cameraRef.current = camera;
-      camera.start();
+
+      if (cancelled) {
+        landmarker.close();
+        return;
+      }
+
+      landmarkerRef.current = landmarker;
+
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      if (cancelled) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
+
+      const video = videoRef.current;
+      if (video) {
+        video.srcObject = stream;
+        await video.play();
+        rafRef.current = requestAnimationFrame(processFrame);
+      }
     }
 
+    init().catch(console.error);
+
     return () => {
-      if (cameraRef.current) {
-        cameraRef.current.stop();
-        cameraRef.current = null;
+      cancelled = true;
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
       }
-      if (handsRef.current) {
-        handsRef.current.close();
-        handsRef.current = null;
+      if (landmarkerRef.current) {
+        landmarkerRef.current.close();
+        landmarkerRef.current = null;
       }
+      const video = videoRef.current;
+      if (video?.srcObject) {
+        (video.srcObject as MediaStream).getTracks().forEach((t) => t.stop());
+        video.srcObject = null;
+      }
+      setHands([]);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [videoRef]);
+  }, [videoRef, processFrame]);
 
   return hands;
 }

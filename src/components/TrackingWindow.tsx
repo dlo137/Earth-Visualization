@@ -50,9 +50,9 @@ export default function TrackingWindow() {
         const la = hand.rawLandmarks[a];
         const lb = hand.rawLandmarks[b];
         if (!la || !lb) continue;
-        const ax = la.x * canvas.width;
+        const ax = canvas.width - la.x * canvas.width;
         const ay = la.y * canvas.height;
-        const bx = lb.x * canvas.width;
+        const bx = canvas.width - lb.x * canvas.width;
         const by = lb.y * canvas.height;
         ctx.beginPath();
         ctx.moveTo(ax, ay);
@@ -63,7 +63,7 @@ export default function TrackingWindow() {
 
       // Draw all 21 landmarks as small dots
       for (const lm of hand.rawLandmarks) {
-        const x = lm.x * canvas.width;
+        const x = canvas.width - lm.x * canvas.width;
         const y = lm.y * canvas.height;
         ctx.beginPath();
         ctx.arc(x, y, 2, 0, 2 * Math.PI);
@@ -76,7 +76,7 @@ export default function TrackingWindow() {
         const idx = FINGERTIP_INDICES[name as keyof typeof FINGERTIP_INDICES];
         const lm = hand.rawLandmarks[idx];
         if (!lm) continue;
-        const x = lm.x * canvas.width;
+        const x = canvas.width - lm.x * canvas.width;
         const y = lm.y * canvas.height;
         ctx.beginPath();
         ctx.arc(x, y, 7, 0, 2 * Math.PI);
