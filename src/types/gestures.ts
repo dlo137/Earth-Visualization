@@ -5,6 +5,7 @@ export interface GestureConfig {
   tightenFistThreshold: number;
   pinchDistanceThreshold: number;
   rotateExtensionThreshold: number;
+  gestureDebounceMs: number;
 }
 
 export interface GestureState {

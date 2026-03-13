@@ -1,21 +1,19 @@
-import type { Vector3 } from 'three';
-
 export interface Particle {
   id: number;
-  position: Vector3;
-  originPosition: Vector3;
-  targetPosition: Vector3;
-  velocity: Vector3;
-  color: number;
+  position: { x: number; y: number; z: number };
+  originPosition: { x: number; y: number; z: number };
+  targetPosition: { x: number; y: number; z: number };
+  velocity: { x: number; y: number; z: number };
+  color: { r: number; g: number; b: number };
   size: number;
   opacity: number;
   isDispersed: boolean;
-  disperseOffset: Vector3;
+  disperseOffset: { x: number; y: number; z: number };
 }
 
 export interface ParticleSystemConfig {
   count: number;
-  earthRadius: number;
+  radius: number;
   disperseRadius: number;
   returnSpeed: number;
   disperseSpeed: number;

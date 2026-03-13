@@ -102,30 +102,3 @@ export function exponentialMovingAverage(
 ): number {
   return alpha * current + (1 - alpha) * previous;
 }
-import * as THREE from 'three';
-import type { Landmark } from '../types/handTracking';
-import type { NormalizedPointer } from '../types/interactionBridge';
-
-export function normalizeToNDC(x: number, y: number, width: number, height: number): NormalizedPointer {
-  void x; void y; void width; void height;
-  // TODO: implement
-  return { x: 0, y: 0, deltaX: 0, deltaY: 0 };
-}
-
-export function lerpV3(a: THREE.Vector3, b: THREE.Vector3, t: number): THREE.Vector3 {
-  void a; void b; void t;
-  // TODO: implement
-  return new THREE.Vector3();
-}
-
-export function clamp(value: number, min: number, max: number): number {
-  void value; void min; void max;
-  // TODO: implement
-  return 0;
-}
-
-export function fingertipDelta(a: Landmark, b: Landmark): number {
-  void a; void b;
-  // TODO: implement
-  return 0;
-}

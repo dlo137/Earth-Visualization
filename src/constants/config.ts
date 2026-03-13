@@ -15,11 +15,12 @@ export const DEFAULT_GESTURE_CONFIG: GestureConfig = {
   tightenFistThreshold: 0.05,
   pinchDistanceThreshold: 0.04,
   rotateExtensionThreshold: 0.10,
+  gestureDebounceMs: 150,
 };
 
 export const DEFAULT_PARTICLE_CONFIG: ParticleSystemConfig = {
   count: 8000,
-  earthRadius: 2.0,
+  radius: 2.0,
   disperseRadius: 5.0,
   returnSpeed: 0.03,
   disperseSpeed: 0.05,

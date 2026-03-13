@@ -37,7 +37,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   // Hooks
-  const tracking = useHandTracking(videoRef);
+  const tracking = useHandTracking(videoRef as React.RefObject<HTMLVideoElement>);
   const gesture = useGesture(tracking);
 
   // Interaction frame refs
