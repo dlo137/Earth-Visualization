@@ -9,7 +9,7 @@ import {
 import type { HandTrackingState } from '../types/handTracking';
 import type { GestureState } from '../types/gestures';
 import type { ParticleSystemState } from '../types/particles';
-import type { InteractionFrame, InteractionConfig } from '../types/interactionBridge';
+import type { InteractionFrame } from '../types/interactionBridge';
 import { useHandTracking } from '../hooks/useHandTracking';
 import { useGesture } from '../hooks/useGesture';
 import { useParticleSystem } from '../hooks/useParticleSystem';
@@ -38,7 +38,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   // Hooks
   const tracking = useHandTracking(videoRef);
-  const gesture = useGesture(tracking, DEFAULT_INTERACTION_CONFIG.gestureConfig);
+  const gesture = useGesture(tracking);
 
   // Interaction frame refs
   const prevIndexRef = useRef<{ x: number; y: number; z: number } | null>(null);
@@ -49,7 +49,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   // Build interaction frame
   const interaction: InteractionFrame = useMemo(() => {
     const config = DEFAULT_INTERACTION_CONFIG;
-    let pointer: InteractionFrame['pointer'] = null;
+    let pointer: InteractionFrame['pointer'] = { x: 0, y: 0, deltaX: 0, deltaY: 0 };
     const indexTip = tracking.isDetected ? tracking.fingertips.index : null;
     if (tracking.isDetected && indexTip) {
       const raw = normalizeToNDC(indexTip.x, indexTip.y, config.mirrorX);
@@ -79,9 +79,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         deltaY: delta.dy,
       };
     } else {
-      pointer = null;
       prevIndexRef.current = null;
       smoothedPointerRef.current = null;
+      pointer = { x: 0, y: 0, deltaX: 0, deltaY: 0 };
     }
 
     // Rotation
@@ -109,7 +109,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }, [tracking, gesture]);
 
   // Particle system
-  const { particleState, fps } = useParticleSystem(canvasRef, interaction, DEFAULT_PARTICLE_CONFIG);
+  const { particleState, fps } = useParticleSystem(canvasRef as React.RefObject<HTMLCanvasElement>, interaction, DEFAULT_PARTICLE_CONFIG);
 
   // UI toggles
   const [showTrackingWindow, setShowTrackingWindow] = useState<boolean>(true);
@@ -119,8 +119,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   // Memoize context value
   const value = useMemo<AppContextValue>(() => ({
-    videoRef,
-    canvasRef,
+    videoRef: videoRef as React.RefObject<HTMLVideoElement>,
+    canvasRef: canvasRef as React.RefObject<HTMLCanvasElement>,
     tracking,
     gesture,
     particleState,
@@ -140,35 +140,5 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 export function useAppState(): AppContextValue {
   const ctx = useContext(AppStateContext);
   if (!ctx) throw new Error('useAppState must be used inside AppStateProvider');
-  return ctx;
-}
-import { createContext, useContext, useState } from 'react';
-import type { HandTrackingState } from '../types/handTracking';
-import type { GestureState } from '../types/gestures';
-import type { ParticleSystemState } from '../types/particles';
-import type { InteractionFrame } from '../types/interactionBridge';
-
-interface AppState {
-  tracking: HandTrackingState;
-  gesture: GestureState;
-  particleState: ParticleSystemState;
-  interactionFrame: InteractionFrame | null;
-}
-
-const AppStateContext = createContext<AppState | null>(null);
-
-export function AppStateProvider({ children }: { children: React.ReactNode }) {
-  // TODO: implement
-  return (
-    <AppStateContext.Provider value={null}>
-      {children}
-    </AppStateContext.Provider>
-  );
-}
-
-export function useAppState(): AppState {
-  const ctx = useContext(AppStateContext);
-  if (!ctx) throw new Error('useAppState must be used within AppStateProvider');
-  // TODO: implement
   return ctx;
 }
