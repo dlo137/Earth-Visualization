@@ -28,7 +28,7 @@ const HAND_CONNECTIONS: [number, number][] = [
 ];
 
 export default function TrackingWindow() {
-  const { videoRef, tracking, gesture } = useAppState();
+  const { videoRef, hands, bothHandsDetected, gesture } = useAppState();
   const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -36,61 +36,60 @@ export default function TrackingWindow() {
     if (!canvas) return;
     const ctx = canvas.getContext('2d') as CanvasRenderingContext2D | null;
     if (!ctx) return;
-    // Match canvas size to display size
     canvas.width = canvas.offsetWidth;
     canvas.height = canvas.offsetHeight;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    if (!tracking.isDetected) return;
+    if (hands.length === 0) return;
 
-    // Draw hand skeleton connections
-    ctx.save();
-    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
-    ctx.lineWidth = 1;
-    for (const [a, b] of HAND_CONNECTIONS) {
-      const la = tracking.rawLandmarks[a];
-      const lb = tracking.rawLandmarks[b];
-      if (!la || !lb) continue;
-      const ax = canvas.width - la.x * canvas.width;
-      const ay = la.y * canvas.height;
-      const bx = canvas.width - lb.x * canvas.width;
-      const by = lb.y * canvas.height;
-      ctx.beginPath();
-      ctx.moveTo(ax, ay);
-      ctx.lineTo(bx, by);
-      ctx.stroke();
-    }
-    ctx.restore();
+    for (const hand of hands) {
+      // Draw hand skeleton connections
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+      ctx.lineWidth = 1;
+      for (const [a, b] of HAND_CONNECTIONS) {
+        const la = hand.rawLandmarks[a];
+        const lb = hand.rawLandmarks[b];
+        if (!la || !lb) continue;
+        const ax = la.x * canvas.width;
+        const ay = la.y * canvas.height;
+        const bx = lb.x * canvas.width;
+        const by = lb.y * canvas.height;
+        ctx.beginPath();
+        ctx.moveTo(ax, ay);
+        ctx.lineTo(bx, by);
+        ctx.stroke();
+      }
+      ctx.restore();
 
-    // Draw all 21 landmarks as small dots
-    for (const lm of tracking.rawLandmarks) {
-      const x = canvas.width - lm.x * canvas.width;
-      const y = lm.y * canvas.height;
-      ctx.beginPath();
-      ctx.arc(x, y, 2, 0, 2 * Math.PI);
-      ctx.fillStyle = 'rgba(255,255,255,0.3)';
-      ctx.fill();
-    }
+      // Draw all 21 landmarks as small dots
+      for (const lm of hand.rawLandmarks) {
+        const x = lm.x * canvas.width;
+        const y = lm.y * canvas.height;
+        ctx.beginPath();
+        ctx.arc(x, y, 2, 0, 2 * Math.PI);
+        ctx.fillStyle = 'rgba(255,255,255,0.3)';
+        ctx.fill();
+      }
 
-    // Draw 5 fingertips as larger colored dots
-    for (const name in FINGERTIP_INDICES) {
-      const idx = FINGERTIP_INDICES[name as keyof typeof FINGERTIP_INDICES];
-      const lm = tracking.rawLandmarks[idx];
-      if (!lm) continue;
-      const x = canvas.width - lm.x * canvas.width;
-      const y = lm.y * canvas.height;
-      // Outer ring
-      ctx.beginPath();
-      ctx.arc(x, y, 7, 0, 2 * Math.PI);
-      ctx.strokeStyle = FINGERTIP_COLORS[name as keyof typeof FINGERTIP_INDICES];
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
-      // Inner dot
-      ctx.beginPath();
-      ctx.arc(x, y, 3, 0, 2 * Math.PI);
-      ctx.fillStyle = FINGERTIP_COLORS[name as keyof typeof FINGERTIP_INDICES];
-      ctx.fill();
+      // Draw 5 fingertips as larger colored dots
+      for (const name in FINGERTIP_INDICES) {
+        const idx = FINGERTIP_INDICES[name as keyof typeof FINGERTIP_INDICES];
+        const lm = hand.rawLandmarks[idx];
+        if (!lm) continue;
+        const x = lm.x * canvas.width;
+        const y = lm.y * canvas.height;
+        ctx.beginPath();
+        ctx.arc(x, y, 7, 0, 2 * Math.PI);
+        ctx.strokeStyle = FINGERTIP_COLORS[name as keyof typeof FINGERTIP_INDICES];
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(x, y, 3, 0, 2 * Math.PI);
+        ctx.fillStyle = FINGERTIP_COLORS[name as keyof typeof FINGERTIP_INDICES];
+        ctx.fill();
+      }
     }
-  }, [tracking]);
+  }, [hands]);
 
   return (
     <div
@@ -117,15 +116,17 @@ export default function TrackingWindow() {
           alignItems: 'center',
         }}
       >
-        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)' }}>Hand Tracking</span>
+        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)' }}>
+          Hand Tracking{bothHandsDetected ? ' — BOTH' : hands.length === 1 ? ` — ${hands[0].handedness ?? ''}` : ''}
+        </span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <div
             style={{
               width: 8,
               height: 8,
               borderRadius: '50%',
-              background: tracking.isDetected ? '#00ff88' : '#ff4444',
-              boxShadow: `0 0 6px ${tracking.isDetected ? '#00ff88' : '#ff4444'}`,
+              background: bothHandsDetected ? '#facc15' : hands.length > 0 ? '#00ff88' : '#ff4444',
+              boxShadow: `0 0 6px ${bothHandsDetected ? '#facc15' : hands.length > 0 ? '#00ff88' : '#ff4444'}`,
             }}
           />
           <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.5)' }}>LIVE</span>

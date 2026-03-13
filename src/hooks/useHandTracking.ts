@@ -7,7 +7,7 @@ declare const Camera: any;
 import type { HandTrackingState, Landmark, FingertipState } from '../types/handTracking';
 import { FINGERTIP_INDICES } from '../constants/config';
 
-const DEFAULT_STATE: HandTrackingState = {
+export const DEFAULT_HAND_STATE: HandTrackingState = {
   isDetected: false,
   handedness: null,
   fingertips: { thumb: null, index: null, middle: null, ring: null, pinky: null },
@@ -17,51 +17,44 @@ const DEFAULT_STATE: HandTrackingState = {
 };
 
 /**
- * React hook to track the user's right hand using MediaPipe Hands and return fingertip landmarks.
+ * React hook to track up to 2 hands using MediaPipe Hands and return fingertip landmarks.
  */
 export function useHandTracking(
   videoRef: React.RefObject<HTMLVideoElement>
-): HandTrackingState {
-  const [state, setState] = useState<HandTrackingState>(DEFAULT_STATE);
+): HandTrackingState[] {
+  const [hands, setHands] = useState<HandTrackingState[]>([]);
   const handsRef = useRef<any>(null);
   const cameraRef = useRef<any>(null);
 
   const onResults = useCallback((results: Results) => {
-    // No hands detected
-    if (!results.multiHandLandmarks || !results.multiHandedness) {
-      setState(DEFAULT_STATE);
+    if (!results.multiHandLandmarks || !results.multiHandedness || results.multiHandedness.length === 0) {
+      setHands([]);
       return;
     }
-    // Find the user's right hand (labeled 'Left' due to selfieMode)
-    let found = false;
+    const detected: HandTrackingState[] = [];
     for (let i = 0; i < results.multiHandedness.length; i++) {
       const handedness = results.multiHandedness[i];
-      if (handedness.label === 'Left') {
-        const landmarks = results.multiHandLandmarks[i] as Landmark[];
-        if (!landmarks || landmarks.length !== 21) continue;
-        // Extract fingertips
-        const fingertips: FingertipState = {
-          thumb: landmarks[FINGERTIP_INDICES.thumb] ?? null,
-          index: landmarks[FINGERTIP_INDICES.index] ?? null,
-          middle: landmarks[FINGERTIP_INDICES.middle] ?? null,
-          ring: landmarks[FINGERTIP_INDICES.ring] ?? null,
-          pinky: landmarks[FINGERTIP_INDICES.pinky] ?? null,
-        };
-        setState({
-          isDetected: true,
-          handedness: 'Right',
-          fingertips,
-          rawLandmarks: landmarks,
-          confidence: handedness.score ?? 1,
-          timestamp: typeof performance !== 'undefined' ? performance.now() : Date.now(),
-        });
-        found = true;
-        break;
-      }
+      const landmarks = results.multiHandLandmarks[i] as Landmark[];
+      if (!landmarks || landmarks.length !== 21) continue;
+      // In selfieMode, MediaPipe flips labels: 'Left' = user's right, 'Right' = user's left
+      const resolvedHandedness: 'Left' | 'Right' = handedness.label === 'Left' ? 'Right' : 'Left';
+      const fingertips: FingertipState = {
+        thumb: landmarks[FINGERTIP_INDICES.thumb] ?? null,
+        index: landmarks[FINGERTIP_INDICES.index] ?? null,
+        middle: landmarks[FINGERTIP_INDICES.middle] ?? null,
+        ring: landmarks[FINGERTIP_INDICES.ring] ?? null,
+        pinky: landmarks[FINGERTIP_INDICES.pinky] ?? null,
+      };
+      detected.push({
+        isDetected: true,
+        handedness: resolvedHandedness,
+        fingertips,
+        rawLandmarks: landmarks,
+        confidence: handedness.score ?? 1,
+        timestamp: typeof performance !== 'undefined' ? performance.now() : Date.now(),
+      });
     }
-    if (!found) {
-      setState(DEFAULT_STATE);
-    }
+    setHands(detected);
   }, []);
 
   useEffect(() => {
@@ -72,9 +65,9 @@ export function useHandTracking(
     });
     hands.setOptions({
       modelComplexity: 1,
-      maxNumHands: 1,
-      minDetectionConfidence: 0.75,
-      minTrackingConfidence: 0.75,
+      maxNumHands: 2,
+      minDetectionConfidence: 0.5,
+      minTrackingConfidence: 0.5,
       selfieMode: true,
     });
     hands.onResults(onResults);
@@ -108,5 +101,5 @@ export function useHandTracking(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [videoRef]);
 
-  return state;
+  return hands;
 }

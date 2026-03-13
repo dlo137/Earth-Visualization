@@ -9,7 +9,7 @@ const GESTURE_COLORS: Record<string, string> = {
 };
 
 export default function DebugOverlay() {
-  const { fps, gesture, tracking, showDebugOverlay } = useAppState();
+  const { fps, gesture, hands, bothHandsDetected, showDebugOverlay } = useAppState();
 
   if (!showDebugOverlay) return null;
 
@@ -43,16 +43,26 @@ export default function DebugOverlay() {
           {' '}({Math.round(gesture.confidence * 100)}%)
         </span>
       </div>
-      <div>HAND: <span style={{ color: tracking.isDetected ? '#34d399' : '#ff4444' }}>
-        {tracking.isDetected ? `${tracking.handedness ?? 'Unknown'} (${Math.round(tracking.confidence * 100)}%)` : 'none'}
-      </span></div>
-      {tracking.isDetected && tracking.fingertips.index && (
-        <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: 10 }}>
-          IDX x:{tracking.fingertips.index.x.toFixed(3)}{' '}
-          y:{tracking.fingertips.index.y.toFixed(3)}{' '}
-          z:{tracking.fingertips.index.z.toFixed(3)}
-        </div>
+      {hands.length === 0 && (
+        <div>HANDS: <span style={{ color: '#ff4444' }}>none</span></div>
       )}
+      {hands.map((hand, i) => (
+        <div key={i}>
+          <div>
+            HAND {i + 1}:{' '}
+            <span style={{ color: bothHandsDetected ? '#facc15' : '#34d399' }}>
+              {hand.handedness ?? 'Unknown'} ({Math.round(hand.confidence * 100)}%)
+            </span>
+          </div>
+          {hand.fingertips.index && (
+            <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: 10 }}>
+              IDX x:{hand.fingertips.index.x.toFixed(3)}{' '}
+              y:{hand.fingertips.index.y.toFixed(3)}{' '}
+              z:{hand.fingertips.index.z.toFixed(3)}
+            </div>
+          )}
+        </div>
+      ))}
     </div>
   );
 }

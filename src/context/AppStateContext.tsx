@@ -10,7 +10,7 @@ import type { HandTrackingState } from '../types/handTracking';
 import type { GestureState } from '../types/gestures';
 import type { ParticleSystemState } from '../types/particles';
 import type { InteractionFrame } from '../types/interactionBridge';
-import { useHandTracking } from '../hooks/useHandTracking';
+import { useHandTracking, DEFAULT_HAND_STATE } from '../hooks/useHandTracking';
 import { useGesture } from '../hooks/useGesture';
 import { useParticleSystem } from '../hooks/useParticleSystem';
 import { DEFAULT_INTERACTION_CONFIG, DEFAULT_PARTICLE_CONFIG } from '../constants/config';
@@ -20,6 +20,8 @@ export interface AppContextValue {
   videoRef: React.RefObject<HTMLVideoElement>;
   canvasRef: React.RefObject<HTMLCanvasElement>;
   tracking: HandTrackingState;
+  hands: HandTrackingState[];
+  bothHandsDetected: boolean;
   gesture: GestureState;
   particleState: ParticleSystemState;
   fps: number;
@@ -37,7 +39,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   // Hooks
-  const tracking = useHandTracking(videoRef as React.RefObject<HTMLVideoElement>);
+  const hands = useHandTracking(videoRef as React.RefObject<HTMLVideoElement>);
+  const tracking = hands[0] ?? DEFAULT_HAND_STATE;
+  const bothHandsDetected = hands.length >= 2;
   const gesture = useGesture(tracking);
 
   // Interaction frame refs
@@ -122,6 +126,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     videoRef: videoRef as React.RefObject<HTMLVideoElement>,
     canvasRef: canvasRef as React.RefObject<HTMLCanvasElement>,
     tracking,
+    hands,
+    bothHandsDetected,
     gesture,
     particleState,
     fps,
@@ -130,7 +136,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     showDebugOverlay,
     toggleTrackingWindow,
     toggleDebugOverlay,
-  }), [tracking, gesture, particleState, fps, interaction, showTrackingWindow, showDebugOverlay]);
+  }), [tracking, hands, bothHandsDetected, gesture, particleState, fps, interaction, showTrackingWindow, showDebugOverlay]);
 
   return (
     <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>
