@@ -12,19 +12,20 @@ export const FINGERTIP_INDICES = {
 
 export const DEFAULT_GESTURE_CONFIG: GestureConfig = {
   disperseSpreadThreshold: 0.15,
-  tightenFistThreshold: 0.05,
-  pinchDistanceThreshold: 0.04,
+  tightenFistThreshold: 0.09,
+  pinchDistanceThreshold: 0.07,
   rotateExtensionThreshold: 0.10,
   gestureDebounceMs: 150,
 };
 
 export const DEFAULT_PARTICLE_CONFIG: ParticleSystemConfig = {
-  count: 8000,
+  count: 40000,
   radius: 2.0,
   disperseRadius: 5.0,
-  returnSpeed: 0.03,
+  returnSpeed: 0.12,
   disperseSpeed: 0.05,
-  rotationSensitivity: 2.5,
+  rotationSensitivity: 4.0,
+  particleSize: 0.011,
 };
 
 export const DEFAULT_INTERACTION_CONFIG: InteractionConfig = {

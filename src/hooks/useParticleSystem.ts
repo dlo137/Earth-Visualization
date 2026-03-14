@@ -78,7 +78,7 @@ export function useParticleSystem(
     geometry.setAttribute('color', new THREE.BufferAttribute(colorBuffer, 3));
 
     const material = new THREE.PointsMaterial({
-      size: 0.015,
+      size: config.particleSize,
       vertexColors: true,
       transparent: true,
       opacity: 0.85,
@@ -107,27 +107,42 @@ export function useParticleSystem(
 
       // Read interaction from ref
       const currentInteraction = interactionRef.current;
-      const gesture = currentInteraction.gesture;
-      const pointer = currentInteraction.pointer;
+      const { gesture, previousGesture, pointer, handsDetected, isZoomMode, zoomScale } = currentInteraction;
       const particles = particlesRef.current;
       const points = pointsRef.current;
       if (particles && points) {
-        // Disperse
-        if (gesture === 'DISPERSE' && particleStateRef.current !== 'DISPERSED') {
-          disperseParticles(particles);
-          particleStateRef.current = 'DISPERSING';
+        // Always apply zoom scale (persists after locking in)
+        points.scale.setScalar(zoomScale);
+
+        // Zoom mode: lock earth gestures, only allow auto-rotate
+        if (isZoomMode) {
+          points.rotation.y += 0.001;
+        } else {
+          // Disperse only on fist→open transition
+          const isFistToOpen = gesture === 'DISPERSE' && previousGesture === 'TIGHTEN';
+          if (isFistToOpen && particleStateRef.current !== 'DISPERSED') {
+            disperseParticles(particles);
+            particleStateRef.current = 'DISPERSING';
+          }
+          // Tighten: explicit fist gesture or no hands detected
+          if (
+            (gesture === 'TIGHTEN' || !handsDetected) &&
+            particleStateRef.current !== 'FORMED'
+          ) {
+            tightenParticles(particles);
+            particleStateRef.current = 'TIGHTENING';
+          }
+          // Rotate
+          if (gesture === 'ROTATE' && pointer) {
+            points.rotation.y += pointer.deltaX * config.rotationSensitivity;
+            points.rotation.x += pointer.deltaY * config.rotationSensitivity;
+          }
+          // Auto-rotate when idle or no hands
+          if (gesture === 'IDLE' || !handsDetected) {
+            points.rotation.y += 0.001;
+          }
         }
-        // Tighten
-        if (gesture === 'TIGHTEN' && particleStateRef.current !== 'FORMED') {
-          tightenParticles(particles);
-          particleStateRef.current = 'TIGHTENING';
-        }
-        // Rotate
-        if (gesture === 'ROTATE' && pointer) {
-          points.rotation.y += pointer.deltaX * config.rotationSensitivity * 0.01;
-          points.rotation.x += pointer.deltaY * config.rotationSensitivity * 0.01;
-        }
-        // Update positions
+        // Always update particle positions
         updateParticlePositions(particles, config);
         if (positionBufferRef.current) {
           getPositionBuffer(particles, positionBufferRef.current);
@@ -135,10 +150,6 @@ export function useParticleSystem(
           if (attr) {
             attr.needsUpdate = true;
           }
-        }
-        // Auto-rotate when idle
-        if (gesture === 'IDLE') {
-          points.rotation.y += 0.001;
         }
       }
       // Render

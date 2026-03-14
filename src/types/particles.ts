@@ -18,6 +18,7 @@ export interface ParticleSystemConfig {
   returnSpeed: number;
   disperseSpeed: number;
   rotationSensitivity: number;
+  particleSize: number;
 }
 
 export type ParticleSystemState = 'FORMED' | 'DISPERSING' | 'DISPERSED' | 'TIGHTENING';

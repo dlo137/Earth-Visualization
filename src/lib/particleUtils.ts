@@ -2,22 +2,101 @@ import type { Particle } from '../types/particles';
 import type { ParticleSystemConfig } from '../types/particles';
 import { sphericalToCartesian, lerpV3, clamp } from './mathUtils';
 
+/** Returns true if the lat/lon falls over a land mass (approximate continent outlines). */
+function isLand(lat: number, lon: number): boolean {
+  // Antarctica
+  if (lat < -65) return true;
+  // Greenland
+  if (lat > 60 && lat < 85 && lon > -75 && lon < -12) return true;
+  // Iceland
+  if (lat > 63 && lat < 67 && lon > -25 && lon < -13) return true;
+  // North America (mainland + Central America)
+  if (lat > 7 && lat < 72 && lon > -168 && lon < -52) {
+    if (lat < 25 && lon > -78 && lon < -60) return false; // Caribbean Sea
+    return true;
+  }
+  // South America
+  if (lat > -56 && lat < 13 && lon > -82 && lon < -34) return true;
+  // UK / Ireland
+  if (lat > 49 && lat < 61 && lon > -11 && lon < 2) return true;
+  // Europe
+  if (lat > 36 && lat < 72 && lon > -9 && lon < 40) return true;
+  // Africa
+  if (lat > -35 && lat < 38 && lon > -18 && lon < 52) return true;
+  // Arabian Peninsula
+  if (lat > 12 && lat < 32 && lon > 35 && lon < 60) return true;
+  // Asia main body
+  if (lat > 1 && lat < 78 && lon > 26 && lon < 150) {
+    if (lat < 10 && lon > 100 && lon < 120) return false; // South China Sea
+    return true;
+  }
+  // SE Asia / Indonesia
+  if (lat > -10 && lat < 20 && lon > 95 && lon < 142) return true;
+  // Australia
+  if (lat > -44 && lat < -10 && lon > 114 && lon < 154) return true;
+  // New Zealand
+  if (lat > -47 && lat < -34 && lon > 166 && lon < 178) return true;
+  // Japan
+  if (lat > 31 && lat < 46 && lon > 129 && lon < 146) return true;
+  return false;
+}
+
+/** Returns true if the lat/lon falls in a major desert region. */
+function isDesert(lat: number, lon: number): boolean {
+  if (lat > 15 && lat < 35 && lon > -18 && lon < 40) return true;  // Sahara
+  if (lat > 15 && lat < 32 && lon > 36 && lon < 60) return true;   // Arabian
+  if (lat > 38 && lat < 50 && lon > 90 && lon < 120) return true;  // Gobi
+  if (lat > 25 && lat < 36 && lon > -120 && lon < -100) return true; // Mojave/Sonoran
+  if (lat > -35 && lat < -20 && lon > 118 && lon < 145) return true; // Australian outback
+  if (lat > -30 && lat < -15 && lon > -72 && lon < -65) return true; // Atacama
+  return false;
+}
+
 /**
- * Returns a color { r, g, b } based on phi angle, with random jitter.
+ * Returns a realistic Earth color based on geographic position and biome.
  */
-function generateEarthColor(phi: number): { r: number; g: number; b: number } {
-  let base: { r: number; g: number; b: number };
-  if (phi < 0.3) base = { r: 0.9, g: 0.95, b: 1.0 };
-  else if (phi < 1.0) base = { r: 0.1, g: 0.4, b: 0.8 };
-  else if (phi < 1.6) base = { r: 0.2, g: 0.6, b: 0.2 };
-  else if (phi < 2.2) base = { r: 0.05, g: 0.3, b: 0.7 };
-  else if (phi < 2.8) base = { r: 0.85, g: 0.9, b: 1.0 };
-  else base = { r: 0.0, g: 0.2, b: 0.5 };
-  return {
-    r: clamp(base.r + (Math.random() * 0.1 - 0.05), 0, 1),
-    g: clamp(base.g + (Math.random() * 0.1 - 0.05), 0, 1),
-    b: clamp(base.b + (Math.random() * 0.1 - 0.05), 0, 1),
-  };
+function generateEarthColor(phi: number, theta: number): { r: number; g: number; b: number } {
+  const lat = 90 - (phi * 180) / Math.PI;
+  const lon = (theta * 180) / Math.PI - 180;
+  const absLat = Math.abs(lat);
+  const n = Math.random() * 0.06 - 0.03; // subtle per-particle noise
+
+  // Polar ice caps
+  if (lat > 68 || lat < -65) {
+    const i = absLat > 76 ? 0.97 : 0.82;
+    return { r: clamp(i + n, 0, 1), g: clamp(i + n * 0.5, 0, 1), b: clamp(i + 0.04 + n, 0, 1) };
+  }
+
+  if (!isLand(lat, lon)) {
+    // Ocean — vary by latitude for temperature
+    if (absLat > 55) {
+      return { r: clamp(0.04 + n, 0, 1), g: clamp(0.18 + n, 0, 1), b: clamp(0.48 + n, 0, 1) };
+    }
+    if (Math.random() > 0.75) {
+      // Shallow / coastal tint
+      return { r: clamp(0.07 + n, 0, 1), g: clamp(0.33 + n, 0, 1), b: clamp(0.72 + n, 0, 1) };
+    }
+    // Deep ocean
+    return { r: clamp(0.02 + n, 0, 1), g: clamp(0.1 + n, 0, 1), b: clamp(0.42 + n, 0, 1) };
+  }
+
+  // Desert biome
+  if (isDesert(lat, lon)) {
+    return { r: clamp(0.76 + n * 2, 0, 1), g: clamp(0.6 + n * 2, 0, 1), b: clamp(0.27 + n, 0, 1) };
+  }
+
+  // Tundra
+  if (absLat > 58) {
+    return { r: clamp(0.52 + n, 0, 1), g: clamp(0.56 + n, 0, 1), b: clamp(0.42 + n, 0, 1) };
+  }
+
+  // Tropical forest
+  if (absLat < 23) {
+    return { r: clamp(0.06 + n, 0, 1), g: clamp(0.42 + n, 0, 1), b: clamp(0.1 + n, 0, 1) };
+  }
+
+  // Temperate
+  return { r: clamp(0.16 + n, 0, 1), g: clamp(0.48 + n, 0, 1), b: clamp(0.16 + n, 0, 1) };
 }
 
 /**
@@ -46,7 +125,7 @@ export function generateEarthSurface(config: ParticleSystemConfig): Particle[] {
     const phi = Math.acos(1 - (2 * (i + 0.5)) / count);
     const theta = (2 * Math.PI * i) / goldenRatio;
     const cartesian = sphericalToCartesian(radius, phi, theta);
-    const color = generateEarthColor(phi);
+    const color = generateEarthColor(phi, theta);
     const disperseOffset = generateDisperseOffset(config.disperseRadius);
     const particle: Particle = {
       id: i,

@@ -13,8 +13,9 @@ import type { InteractionFrame } from '../types/interactionBridge';
 import { useHandTracking, DEFAULT_HAND_STATE } from '../hooks/useHandTracking';
 import { useGesture } from '../hooks/useGesture';
 import { useParticleSystem } from '../hooks/useParticleSystem';
-import { DEFAULT_INTERACTION_CONFIG, DEFAULT_PARTICLE_CONFIG } from '../constants/config';
-import { normalizeToNDC, exponentialMovingAverage, fingertipDelta } from '../lib/mathUtils';
+import { DEFAULT_INTERACTION_CONFIG, DEFAULT_PARTICLE_CONFIG, DEFAULT_GESTURE_CONFIG } from '../constants/config';
+import { normalizeToNDC, exponentialMovingAverage, fingertipDelta, landmarkDistance, clamp } from '../lib/mathUtils';
+import { detectGesture } from '../lib/gestureClassifier';
 
 export interface AppContextValue {
   videoRef: React.RefObject<HTMLVideoElement>;
@@ -49,6 +50,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const smoothedPointerRef = useRef<{ x: number; y: number } | null>(null);
   const rotationRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const disperseProgressRef = useRef<number>(0);
+  const isZoomModeRef = useRef<boolean>(false);
+  const zoomScaleRef = useRef<number>(1.0);
+  const isSelectedRef = useRef<boolean>(false);
 
   // Build interaction frame
   const interaction: InteractionFrame = useMemo(() => {
@@ -101,13 +105,52 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       disperseProgressRef.current = Math.max(disperseProgressRef.current - 0.05, 0);
     }
 
+    // Zoom mode state machine
+    const rightHand = hands.find(h => h.handedness === 'Right') ?? null;
+    const leftHand = hands.find(h => h.handedness === 'Left') ?? null;
+    const leftGesture = leftHand ? detectGesture(leftHand.fingertips, DEFAULT_GESTURE_CONFIG) : 'IDLE';
+
+    // Enter: right hand shows PINCH (clears any prior selected state)
+    if (gesture.current === 'PINCH' && !isZoomModeRef.current) {
+      isZoomModeRef.current = true;
+      isSelectedRef.current = false;
+    }
+    // Exit (lock in scale): left hand fist while right hand is in zoom mode → SELECTED
+    if (isZoomModeRef.current && leftHand && leftGesture === 'TIGHTEN') {
+      isZoomModeRef.current = false;
+      isSelectedRef.current = true;
+      // zoomScaleRef keeps its current value — scale is locked in
+    }
+    // Exit (reset): right hand lost entirely
+    if (isZoomModeRef.current && !rightHand && !tracking.isDetected) {
+      isZoomModeRef.current = false;
+      isSelectedRef.current = false;
+      zoomScaleRef.current = 1.0;
+    }
+    // While in zoom mode, map right-hand thumb-index distance to scale
+    if (isZoomModeRef.current) {
+      const src = rightHand ?? tracking;
+      const thumbTip = src.fingertips.thumb;
+      const idxTip = src.fingertips.index;
+      if (thumbTip && idxTip) {
+        const dist = landmarkDistance(thumbTip, idxTip);
+        const pinchThreshold = DEFAULT_GESTURE_CONFIG.pinchDistanceThreshold;
+        zoomScaleRef.current = clamp(pinchThreshold / Math.max(dist, pinchThreshold), 0.2, 1.0);
+      }
+    }
+
     return {
       pointer,
       gesture: gesture.current,
+      previousGesture: gesture.previous,
       gestureStrength: gesture.confidence,
       rotationX: rotationRef.current.x,
       rotationY: rotationRef.current.y,
       disperseProgress: disperseProgressRef.current,
+      handsDetected: hands.length > 0,
+      isZoomMode: isZoomModeRef.current,
+      zoomScale: zoomScaleRef.current,
+      isSelected: isSelectedRef.current,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tracking, gesture]);

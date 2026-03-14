@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAppState } from '../context/AppStateContext';
 import { FINGERTIP_INDICES } from '../constants/config';
 
@@ -28,8 +28,16 @@ const HAND_CONNECTIONS: [number, number][] = [
 ];
 
 export default function TrackingWindow() {
-  const { videoRef, hands, bothHandsDetected, gesture } = useAppState();
+  const { videoRef, hands, bothHandsDetected, gesture, interaction } = useAppState();
   const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
+  const [showSelected, setShowSelected] = useState(false);
+
+  useEffect(() => {
+    if (!interaction.isSelected) return;
+    setShowSelected(true);
+    const timer = setTimeout(() => setShowSelected(false), 2000);
+    return () => clearTimeout(timer);
+  }, [interaction.isSelected]);
 
   useEffect(() => {
     const canvas = overlayCanvasRef.current;
@@ -171,7 +179,7 @@ export default function TrackingWindow() {
           color: GESTURE_COLORS[gesture.current] || 'rgba(255,255,255,0.4)',
         }}
       >
-        {gesture.current}
+        {showSelected ? 'SELECTED' : interaction.isZoomMode ? 'PINCH (TOGGLE STATE)' : gesture.current}
       </div>
     </div>
   );

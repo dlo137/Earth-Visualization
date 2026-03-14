@@ -27,15 +27,18 @@ function isClosedFist(fingertips: FingertipState, config: GestureConfig): boolea
 }
 
 /**
- * Returns true if thumb and index are present and close together.
+ * Returns true if thumb and index are close together AND the overall
+ * spread is above the fist threshold (so a fist doesn't trigger pinch).
  */
 function isPinch(fingertips: FingertipState, config: GestureConfig): boolean {
   const thumb = fingertips.thumb;
   const index = fingertips.index;
+  const arr = getFingertipsAsArray(fingertips);
   return (
     !!thumb &&
     !!index &&
-    landmarkDistance(thumb, index) < config.pinchDistanceThreshold
+    landmarkDistance(thumb, index) < config.pinchDistanceThreshold &&
+    averageSpread(arr) >= config.tightenFistThreshold
   );
 }
 
@@ -85,9 +88,9 @@ export function detectGesture(
   fingertips: FingertipState,
   config: GestureConfig = DEFAULT_GESTURE_CONFIG
 ): GestureType {
+  if (isClosedFist(fingertips, config)) return 'TIGHTEN';
   if (isPinch(fingertips, config)) return 'PINCH';
   if (isOpenPalm(fingertips, config)) return 'DISPERSE';
-  if (isClosedFist(fingertips, config)) return 'TIGHTEN';
   if (isPointing(fingertips, config)) return 'ROTATE';
   return 'IDLE';
 }
